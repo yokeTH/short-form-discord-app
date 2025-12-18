@@ -40,7 +40,6 @@ func IGHandler(s *discordgo.Session, i *discordgo.InteractionCreate, deps *comma
 		return
 	}
 
-	// Defer the response first
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 	})
@@ -60,12 +59,22 @@ func IGHandler(s *discordgo.Session, i *discordgo.InteractionCreate, deps *comma
 
 	log.Info().Str("url", url).Msg("Instagram video downloaded successfully, sending to user")
 	s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
-		Content: "Here is your Instagram video:",
 		Files: []*discordgo.File{
 			{
 				Name:        "video.mp4",
 				ContentType: "video/mp4",
 				Reader:      videoData,
+			},
+		},
+		Components: []discordgo.MessageComponent{
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.Button{
+						Label: "Original Post",
+						Style: discordgo.LinkButton,
+						URL:   url,
+					},
+				},
 			},
 		},
 	})
