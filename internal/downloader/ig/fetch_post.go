@@ -3,6 +3,7 @@ package ig
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -88,6 +89,7 @@ func fetchInstagramPost(shortcode string) (*response, error) {
 	req.Header.Set("X-FB-Friendly-Name", "PolarisPostActionLoadPostQueryQuery")
 	req.Header.Set("X-ASBD-ID", "359341")
 	req.Header.Set("Referer", "https://www.instagram.com/p/"+shortcode+"/")
+	req.Header.Set("Cookie", os.Getenv("INSTAGRAM_COOKIE"))
 
 	client := &http.Client{
 		Timeout: 15 * time.Second,
