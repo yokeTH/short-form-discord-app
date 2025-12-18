@@ -35,6 +35,7 @@ func init() {
 
 var (
 	commands = []*discordgo.ApplicationCommand{
+		&command.InfoCommand,
 		&command.IGCommand,
 	}
 )
@@ -58,7 +59,7 @@ func main() {
 		for _, v := range commands {
 			err := s.ApplicationCommandDelete(s.State.User.ID, "", v.ID)
 			if err != nil {
-				log.Panic().Err(err).Str("command", v.Name).Msg("Cannot remove command")
+				log.Error().Err(err).Str("command", v.Name).Msg("Cannot remove command")
 			} else {
 				log.Info().Str("command", v.Name).Msg("Removed command")
 			}
@@ -69,7 +70,7 @@ func main() {
 		for i, v := range commands {
 			cmd, err := s.ApplicationCommandCreate(s.State.User.ID, "", v)
 			if err != nil {
-				log.Panic().Err(err).Str("command", v.Name).Msg("Cannot create command")
+				log.Error().Err(err).Str("command", v.Name).Msg("Cannot create command")
 			}
 			registeredCommands[i] = cmd
 		}

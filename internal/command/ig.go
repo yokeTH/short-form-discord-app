@@ -67,6 +67,10 @@ func IGHandler(s *discordgo.Session, i *discordgo.InteractionCreate, deps *comma
 	}
 
 	log.Info().Str("url", url).Msg("Instagram video downloaded successfully, sending to user")
+	user := i.Member
+	if user == nil && i.User != nil {
+		user = &discordgo.Member{User: i.User}
+	}
 	s.FollowupMessageCreate(i.Interaction, false, &discordgo.WebhookParams{
 		Files: []*discordgo.File{
 			{
@@ -75,6 +79,22 @@ func IGHandler(s *discordgo.Session, i *discordgo.InteractionCreate, deps *comma
 				Reader:      videoData,
 			},
 		},
+		Content: "",
+		Username: func() string {
+			if user != nil && user.User != nil {
+				if user.Nick != "" {
+					return user.Nick
+				}
+				return user.User.Username
+			}
+			return ""
+		}(),
+		AvatarURL: func() string {
+			if user != nil && user.User != nil {
+				return user.User.AvatarURL("")
+			}
+			return ""
+		}(),
 		Components: []discordgo.MessageComponent{
 			discordgo.ActionsRow{
 				Components: []discordgo.MessageComponent{

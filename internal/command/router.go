@@ -20,6 +20,9 @@ func NewCommandRouter(deps *commandRouterDependency) func(*discordgo.Session, *d
 		cmdName := i.ApplicationCommandData().Name
 		log.Info().Str("command", cmdName).Msg("Routing command")
 		switch cmdName {
+		case InfoCommand.Name:
+			log.Info().Msg("Routing to InfoHandler")
+			InfoHandler(s, i, deps)
 		case IGCommand.Name:
 			log.Info().Msg("Routing to IGHandler")
 			IGHandler(s, i, deps)

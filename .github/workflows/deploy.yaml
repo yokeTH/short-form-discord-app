@@ -30,6 +30,10 @@ jobs:
       - name: Convert repo name to lowercase
         run: echo "REPO_NAME=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      - name: Get git commit hash
+        id: vars
+        run: echo "GITHASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
       - name: Build and push api container
         id: docker_build_api
         uses: docker/build-push-action@v6
@@ -38,6 +42,8 @@ jobs:
           tags: ghcr.io/${{ env.REPO_NAME }}:latest
           context: .
           file: ./Dockerfile
+          build-args: |
+            GITHASH=${{ env.GITHASH }}
 
       - name: Deploy api
         uses: deploys-app/deploys-action@v1

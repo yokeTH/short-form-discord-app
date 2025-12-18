@@ -1,5 +1,8 @@
 FROM nixos/nix:latest AS builder
 
+ARG GITHASH=unknown
+ENV GITHASH=${GITHASH}
+
 COPY . /tmp/build
 WORKDIR /tmp/build
 
