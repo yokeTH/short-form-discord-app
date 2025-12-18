@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type response struct {
@@ -63,6 +65,7 @@ type SidecarNode struct {
 }
 
 func fetchInstagramPost(shortcode string) (*response, error) {
+	log.Info().Str("shortcode", shortcode).Msg("Fetching Instagram post")
 	body := buildPostBody(shortcode)
 
 	req, err := http.NewRequest(
@@ -71,6 +74,7 @@ func fetchInstagramPost(shortcode string) (*response, error) {
 		strings.NewReader(body),
 	)
 	if err != nil {
+		log.Error().Err(err).Str("shortcode", shortcode).Msg("Failed to create HTTP request for Instagram post")
 		return nil, err
 	}
 
@@ -90,6 +94,7 @@ func fetchInstagramPost(shortcode string) (*response, error) {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Error().Err(err).Str("shortcode", shortcode).Msg("Failed to perform HTTP request for Instagram post")
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -97,7 +102,9 @@ func fetchInstagramPost(shortcode string) (*response, error) {
 	var res response
 	err = json.NewDecoder(resp.Body).Decode(&res)
 	if err != nil {
+		log.Error().Err(err).Str("shortcode", shortcode).Msg("Failed to decode Instagram post response")
 		return nil, err
 	}
+	log.Info().Str("shortcode", shortcode).Msg("Instagram post fetched and decoded successfully")
 	return &res, nil
 }

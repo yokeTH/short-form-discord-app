@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+
+	"github.com/rs/zerolog/log"
 )
 
 func buildPostBody(shortcode string) string {
@@ -22,10 +24,13 @@ func buildPostBody(shortcode string) string {
 }
 
 func parseInstagramVideoURL(input string) (string, bool) {
-	re := regexp.MustCompile(`https?://www\.instagram\.com/(?:p|reel|reels)/[A-Za-z0-9_-]+/?(?:\?[^\s]*)?`)
-	match := re.FindString(input)
-	if match != "" {
-		return match, true
+	log.Info().Str("input", input).Msg("Parsing Instagram video URL")
+	re := regexp.MustCompile(`https?://www\.instagram\.com/(?:p|reel|reels?)/([A-Za-z0-9_-]+)`)
+	match := re.FindStringSubmatch(input)
+	if len(match) > 1 {
+		log.Info().Str("postID", match[1]).Msg("Instagram video URL matched")
+		return match[1], true
 	}
+	log.Warn().Str("input", input).Msg("Instagram video URL did not match expected pattern")
 	return "", false
 }

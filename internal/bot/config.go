@@ -1,10 +1,9 @@
 package bot
 
 import (
-	"fmt"
-
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog/log"
 )
 
 type config struct {
@@ -23,12 +22,13 @@ func NewFromENV() *config {
 	config := &config{}
 
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("Unable to load .env file:", err)
+		log.Error().Err(err).Msg("Unable to load .env file")
 	}
 
 	if err := env.Parse(config); err != nil {
-		panic(fmt.Sprintf("Unable to parse env vars: %s", err))
+		log.Panic().Err(err).Msg("Unable to parse env vars")
 	}
 
+	log.Info().Msg("Environment variables loaded successfully")
 	return config
 }
