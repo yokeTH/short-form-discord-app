@@ -37,3 +37,4 @@ go.work.sum
 !.env.example
 
 /result
+/tmp

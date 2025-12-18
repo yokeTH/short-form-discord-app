@@ -1,13 +1,16 @@
 package ig
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -26,6 +29,7 @@ type Period struct {
 }
 
 type AdaptationSet struct {
+	ContentType     string           `xml:"contentType,attr"`
 	Representations []Representation `xml:"Representation"`
 }
 
@@ -78,23 +82,13 @@ func DownloadInstragramVideo(url string) (io.Reader, error) {
 	}
 
 	log.Info().Msg("Parsing DASH manifest for lower quality video")
-	lowerURL, found, err := findLowerQualityVideo(manifest)
+	mergedReader, err := processDASHAndMerge(manifest)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse DASH manifest")
-		return nil, fmt.Errorf("Failed to parse DASH manifest: %v", err)
-	}
-	if !found {
-		log.Error().Msg("No lower quality video under 8MB found in DASH manifest")
-		return nil, fmt.Errorf("No video under 8MB available")
+		log.Error().Err(err).Msg("Failed to merge DASH streams")
+		return nil, fmt.Errorf("Failed to process video: %v", err)
 	}
 
-	log.Info().Str("videoURL", lowerURL).Msg("Fetching lower quality video under 8MB")
-	resp, err := http.Get(lowerURL)
-	if err != nil {
-		log.Error().Err(err).Str("videoURL", lowerURL).Msg("Failed to fetch lower quality video")
-		return nil, fmt.Errorf("Failed to fetch lower quality video: %v", err)
-	}
-	return resp.Body, nil
+	return mergedReader, nil
 }
 
 func checkURLSize(url string) (bool, int64, error) {
@@ -114,32 +108,99 @@ func checkURLSize(url string) (bool, int64, error) {
 	return size <= maxDiscordFileSize, size, nil
 }
 
-func findLowerQualityVideo(manifest string) (string, bool, error) {
+func processDASHAndMerge(manifestContent string) (io.Reader, error) {
 	var mpd MPD
-	decoder := xml.NewDecoder(strings.NewReader(manifest))
-	if err := decoder.Decode(&mpd); err != nil {
-		return "", false, err
+	if err := xml.Unmarshal([]byte(manifestContent), &mpd); err != nil {
+		return nil, fmt.Errorf("failed to parse manifest: %w", err)
 	}
+
+	var audioURL string
 	var videoReps []Representation
+
 	for _, aset := range mpd.Period.AdaptationSets {
-		for _, rep := range aset.Representations {
-			if strings.HasPrefix(rep.BaseURL, "http") && (rep.MimeType == "" || strings.HasPrefix(rep.MimeType, "video")) {
-				videoReps = append(videoReps, rep)
+		switch aset.ContentType {
+		case "audio":
+			if len(aset.Representations) > 0 {
+				audioURL = aset.Representations[0].BaseURL
 			}
+		case "video":
+			videoReps = append(videoReps, aset.Representations...)
 		}
 	}
+
+	if audioURL == "" {
+		return nil, fmt.Errorf("no audio track found in manifest")
+	}
+	if len(videoReps) == 0 {
+		return nil, fmt.Errorf("no video tracks found in manifest")
+	}
+
 	sort.Slice(videoReps, func(i, j int) bool {
 		return videoReps[i].Bandwidth < videoReps[j].Bandwidth
 	})
-	for _, rep := range videoReps {
-		ok, _, err := checkURLSize(rep.BaseURL)
-		if err != nil {
-			log.Warn().Err(err).Str("url", rep.BaseURL).Msg("Failed to check size for representation")
-			continue
-		}
-		if ok {
-			return rep.BaseURL, true, nil
-		}
+
+	targetVideoURL := videoReps[0].BaseURL
+	log.Info().Int("bandwidth", videoReps[0].Bandwidth).Msg("Selected video quality")
+
+	tempDir := os.TempDir()
+	videoPath := filepath.Join(tempDir, "temp_video.mp4")
+	audioPath := filepath.Join(tempDir, "temp_audio.mp4")
+	outputPath := filepath.Join(tempDir, "output_merged.mp4")
+
+	defer os.Remove(videoPath)
+	defer os.Remove(audioPath)
+
+	if err := downloadFile(targetVideoURL, videoPath); err != nil {
+		return nil, fmt.Errorf("failed to download video stream: %w", err)
 	}
-	return "", false, nil
+	if err := downloadFile(audioURL, audioPath); err != nil {
+		return nil, fmt.Errorf("failed to download audio stream: %w", err)
+	}
+
+	cmd := exec.Command("ffmpeg",
+		"-y",
+		"-i", videoPath,
+		"-i", audioPath,
+		"-c", "copy",
+		"-map", "0:v:0",
+		"-map", "1:a:0",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Error().Str("ffmpeg_output", string(output)).Msg("FFmpeg merge failed")
+		return nil, fmt.Errorf("ffmpeg failed: %w", err)
+	}
+
+	resultData, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, err
+	}
+
+	os.Remove(outputPath)
+
+	return bytes.NewReader(resultData), nil
+}
+
+func downloadFile(url string, filepath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
 }

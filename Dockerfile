@@ -11,10 +11,14 @@ RUN nix \
 RUN mkdir /tmp/nix-store-closure
 RUN cp -R $(nix-store -qR result/) /tmp/nix-store-closure
 
+RUN mkdir -p /tmp/certs/etc/ssl/certs
+RUN cp /etc/ssl/certs/ca-certificates.crt /tmp/certs/etc/ssl/certs/ca-certificates.crt
+
 FROM scratch
 
 WORKDIR /app
 
+COPY --from=builder /tmp/certs/etc/ssl/certs /etc/ssl/certs
 COPY --from=builder /tmp/nix-store-closure /nix/store
 COPY --from=builder /tmp/build/result /app
 CMD ["/app/bin/short-form-discord-app"]

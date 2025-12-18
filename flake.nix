@@ -17,13 +17,14 @@
           pname = "short-form";
           version = "0.1.0";
 
+          env.CGO_ENABLED = 0;
+
           src = ./.;
 
           vendorHash = "sha256-MD8RJaVGnYj6nQ6Xgq8AthgFY+r/cuCmssOyfNrKC1s=";
 
           nativeBuildInputs = [
-            pkgs.openssl
-            # pkgs.ffmpeg
+            pkgs.ffmpeg
           ];
 
           preBuild = ''
