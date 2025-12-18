@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 )
@@ -91,9 +90,8 @@ func fetchInstagramPost(shortcode string) (*response, error) {
 	req.Header.Set("Referer", "https://www.instagram.com/p/"+shortcode+"/")
 	req.Header.Set("Cookie", os.Getenv("INSTAGRAM_COOKIE"))
 
-	client := &http.Client{
-		Timeout: 15 * time.Second,
-	}
+	client := GlobalProxyManager.GetClient()
+
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Error().Err(err).Str("shortcode", shortcode).Msg("Failed to perform HTTP request for Instagram post")
