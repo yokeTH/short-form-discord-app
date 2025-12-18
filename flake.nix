@@ -22,6 +22,7 @@
           vendorHash = "sha256-MD8RJaVGnYj6nQ6Xgq8AthgFY+r/cuCmssOyfNrKC1s=";
 
           nativeBuildInputs = [
+            pkgs.openssl
             # pkgs.ffmpeg
           ];
 
