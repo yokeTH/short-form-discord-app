@@ -12,9 +12,12 @@ var IGCommand = discordgo.ApplicationCommand{
 	Type:        discordgo.ChatApplicationCommand,
 	Contexts: &[]discordgo.InteractionContextType{
 		discordgo.InteractionContextBotDM,
+		discordgo.InteractionContextGuild,
+		discordgo.InteractionContextPrivateChannel,
 	},
 	IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
 		discordgo.ApplicationIntegrationUserInstall,
+		discordgo.ApplicationIntegrationGuildInstall,
 	},
 	Options: []*discordgo.ApplicationCommandOption{
 		{
