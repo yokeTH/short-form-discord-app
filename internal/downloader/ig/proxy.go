@@ -20,16 +20,62 @@ const (
 type ProxyManager struct {
 	proxies []string
 	mu      sync.Mutex
+	cond    *sync.Cond
 	index   int
 }
 
 var GlobalProxyManager *ProxyManager
 
-func InitializeProxies() error {
-	log.Info().Msg("Fetching proxy list...")
+func InitializeProxies() {
+	pm := &ProxyManager{}
+	pm.cond = sync.NewCond(&pm.mu)
+	GlobalProxyManager = pm
+
+	go pm.fetchAndValidate()
+}
+
+func (pm *ProxyManager) GetClient() *http.Client {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	for len(pm.proxies) == 0 {
+		log.Warn().Msg("Waiting for a valid proxy to become available...")
+		pm.cond.Wait()
+	}
+
+	proxyStr := pm.proxies[pm.index]
+	pm.index = (pm.index + 1) % len(pm.proxies)
+
+	if !containsProtocol(proxyStr) {
+		proxyStr = "http://" + proxyStr
+	}
+
+	proxyURL, _ := url.Parse(proxyStr)
+
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+		Timeout: 15 * time.Second,
+	}
+}
+
+func (pm *ProxyManager) addProxy(p string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pm.proxies = append(pm.proxies, p)
+	log.Info().Str("proxy", p).Int("total_valid", len(pm.proxies)).Msg("New valid proxy added")
+
+	pm.cond.Signal()
+}
+
+func (pm *ProxyManager) fetchAndValidate() {
+	log.Info().Msg("Fetching proxy list in background...")
 	resp, err := http.Get(ProxyListURL)
 	if err != nil {
-		return fmt.Errorf("failed to fetch proxy list: %v", err)
+		log.Error().Err(err).Msg("Failed to fetch proxy list")
+		return
 	}
 	defer resp.Body.Close()
 
@@ -41,50 +87,19 @@ func InitializeProxies() error {
 			rawProxies = append(rawProxies, line)
 		}
 	}
+	log.Info().Int("count", len(rawProxies)).Msg("Raw proxy list fetched. Starting validation...")
 
-	log.Info().Int("count", len(rawProxies)).Msg("Proxies fetched. Validating...")
+	sem := make(chan struct{}, 50)
 
-	validProxies := validateProxiesConcurrent(rawProxies)
-	if len(validProxies) == 0 {
-		return fmt.Errorf("no valid proxies found")
-	}
+	for _, p := range rawProxies {
+		go func(proxyAddr string) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-	log.Info().Int("valid_count", len(validProxies)).Msg("Proxy validation complete")
-
-	GlobalProxyManager = &ProxyManager{
-		proxies: validProxies,
-		index:   0,
-	}
-	return nil
-}
-
-func (pm *ProxyManager) GetClient() *http.Client {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	if len(pm.proxies) == 0 {
-		log.Warn().Msg("No proxies available, returning default client")
-		return &http.Client{Timeout: 10 * time.Second}
-	}
-
-	proxyStr := pm.proxies[pm.index]
-	pm.index = (pm.index + 1) % len(pm.proxies)
-
-	if !containsProtocol(proxyStr) {
-		proxyStr = "http://" + proxyStr
-	}
-
-	proxyURL, err := url.Parse(proxyStr)
-	if err != nil {
-		log.Error().Err(err).Str("proxy", proxyStr).Msg("Failed to parse proxy URL")
-		return &http.Client{Timeout: 10 * time.Second}
-	}
-
-	return &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
-		},
-		Timeout: 15 * time.Second,
+			if checkProxy(proxyAddr) {
+				pm.addProxy(proxyAddr)
+			}
+		}(p)
 	}
 }
 
