@@ -8,7 +8,7 @@ import (
 
 const API_URL = "https://www.instagram.com/graphql/query"
 
-func DownloadInstragramVideo(url string) ([]byte, error) {
+func DownloadInstragramVideo(url string) (io.Reader, error) {
 	postID, ok := parseInstagramVideoURL(url)
 	if !ok {
 		return nil, ErrUnsupportURL
@@ -29,10 +29,5 @@ func DownloadInstragramVideo(url string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	videoData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to read video data: %v", err)
-	}
-
-	return videoData, nil
+	return resp.Body, nil
 }
