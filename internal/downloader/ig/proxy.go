@@ -2,7 +2,6 @@ package ig
 
 import (
 	"bufio"
-	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -12,9 +11,10 @@ import (
 )
 
 const (
-	ProxyListURL = "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text"
-	CheckTimeout = 1 * time.Minute
-	CheckTarget  = "https://www.instagram.com"
+	ProxyListURL    = "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text"
+	CheckTimeout    = 5 * time.Second
+	CheckTarget     = "https://www.instagram.com"
+	RefreshInterval = 15 * time.Minute
 )
 
 type ProxyManager struct {
@@ -31,7 +31,7 @@ func InitializeProxies() {
 	pm.cond = sync.NewCond(&pm.mu)
 	GlobalProxyManager = pm
 
-	go pm.fetchAndValidate()
+	go pm.lifecycle()
 }
 
 func (pm *ProxyManager) GetClient() *http.Client {
@@ -39,7 +39,7 @@ func (pm *ProxyManager) GetClient() *http.Client {
 	defer pm.mu.Unlock()
 
 	for len(pm.proxies) == 0 {
-		log.Warn().Msg("Waiting for a valid proxy to become available...")
+		log.Warn().Msg("No proxies available, waiting for refresh...")
 		pm.cond.Wait()
 	}
 
@@ -60,18 +60,18 @@ func (pm *ProxyManager) GetClient() *http.Client {
 	}
 }
 
-func (pm *ProxyManager) addProxy(p string) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+func (pm *ProxyManager) lifecycle() {
+	log.Info().Msg("Starting initial proxy fetch...")
+	pm.fetchAndScan(true)
 
-	pm.proxies = append(pm.proxies, p)
-	log.Info().Str("proxy", p).Int("total_valid", len(pm.proxies)).Msg("New valid proxy added")
-
-	pm.cond.Signal()
+	ticker := time.NewTicker(RefreshInterval)
+	for range ticker.C {
+		log.Info().Msg("Running scheduled proxy refresh (15m)...")
+		pm.fetchAndScan(false)
+	}
 }
 
-func (pm *ProxyManager) fetchAndValidate() {
-	log.Info().Msg("Fetching proxy list in background...")
+func (pm *ProxyManager) fetchAndScan(isStartup bool) {
 	resp, err := http.Get(ProxyListURL)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch proxy list")
@@ -87,30 +87,13 @@ func (pm *ProxyManager) fetchAndValidate() {
 			rawProxies = append(rawProxies, line)
 		}
 	}
-	log.Info().Int("count", len(rawProxies)).Msg("Raw proxy list fetched. Starting validation...")
 
+	validChan := make(chan string, len(rawProxies))
+
+	var wg sync.WaitGroup
 	sem := make(chan struct{}, 50)
 
 	for _, p := range rawProxies {
-		go func(proxyAddr string) {
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			if checkProxy(proxyAddr) {
-				pm.addProxy(proxyAddr)
-			}
-		}(p)
-	}
-}
-
-func validateProxiesConcurrent(list []string) []string {
-	var valid []string
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	sem := make(chan struct{}, 50)
-
-	for _, p := range list {
 		wg.Add(1)
 		go func(proxyAddr string) {
 			defer wg.Done()
@@ -118,41 +101,71 @@ func validateProxiesConcurrent(list []string) []string {
 			defer func() { <-sem }()
 
 			if checkProxy(proxyAddr) {
-				mu.Lock()
-				valid = append(valid, proxyAddr)
-				mu.Unlock()
-				fmt.Print(".")
+				validChan <- proxyAddr
 			}
 		}(p)
 	}
-	wg.Wait()
-	fmt.Println()
-	return valid
+
+	go func() {
+		wg.Wait()
+		close(validChan)
+	}()
+
+	if isStartup {
+		for p := range validChan {
+			pm.addOne(p)
+		}
+	} else {
+		var newProxies []string
+		for p := range validChan {
+			newProxies = append(newProxies, p)
+		}
+
+		if len(newProxies) > 0 {
+			pm.replaceAll(newProxies)
+		} else {
+			log.Warn().Msg("Refresh found 0 valid proxies. Keeping old list.")
+		}
+	}
+}
+
+func (pm *ProxyManager) addOne(p string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.proxies = append(pm.proxies, p)
+	pm.cond.Signal()
+}
+
+func (pm *ProxyManager) replaceAll(newList []string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	prevCount := len(pm.proxies)
+	pm.proxies = newList
+	pm.index = 0
+
+	log.Info().Int("old_count", prevCount).Int("new_count", len(newList)).Msg("Proxy list refreshed")
+
+	pm.cond.Broadcast()
 }
 
 func checkProxy(proxyAddr string) bool {
 	if !containsProtocol(proxyAddr) {
 		proxyAddr = "http://" + proxyAddr
 	}
-
 	proxyURL, err := url.Parse(proxyAddr)
 	if err != nil {
 		return false
 	}
-
 	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
-		},
-		Timeout: CheckTimeout,
+		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
+		Timeout:   CheckTimeout,
 	}
-
 	resp, err := client.Head(CheckTarget)
 	if err != nil {
 		return false
 	}
 	defer resp.Body.Close()
-
 	return resp.StatusCode < 500
 }
 
