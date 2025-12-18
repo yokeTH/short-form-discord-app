@@ -55,6 +55,7 @@ func DownloadInstragramVideo(url string) (io.Reader, error) {
 	}
 
 	if !post.Data.XDTShortcodeMedia.IsVideo || post.Data.XDTShortcodeMedia.VideoURL == "" {
+		log.Info().Interface("post_response", post).Msg("Instagram post response")
 		log.Error().Str("postID", postID).Msg("Post is not a video or missing video URL")
 		return nil, ErrNotVideo
 	}
