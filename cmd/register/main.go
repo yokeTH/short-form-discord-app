@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	GuildID  = flag.String("guild", "", "Test guild ID. If not passed - bot registers commands globally")
 	BotToken = flag.String("token", "", "Bot access token")
 )
 
@@ -47,7 +46,7 @@ func main() {
 	log.Info().Msg("Adding commands...")
 	registeredCommands := make([]*discordgo.ApplicationCommand, len(commands))
 	for i, v := range commands {
-		cmd, err := s.ApplicationCommandCreate(s.State.User.ID, *GuildID, v)
+		cmd, err := s.ApplicationCommandCreate(s.State.User.ID, "", v)
 		if err != nil {
 			log.Panic().Err(err).Str("command", v.Name).Msg("Cannot create command")
 		}

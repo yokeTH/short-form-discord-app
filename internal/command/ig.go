@@ -10,6 +10,12 @@ var IGCommand = discordgo.ApplicationCommand{
 	Name:        "ig",
 	Description: "Download an Instagram video by URL",
 	Type:        discordgo.ChatApplicationCommand,
+	Contexts: &[]discordgo.InteractionContextType{
+		discordgo.InteractionContextBotDM,
+	},
+	IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
+		discordgo.ApplicationIntegrationUserInstall,
+	},
 	Options: []*discordgo.ApplicationCommandOption{
 		{
 			Type:        discordgo.ApplicationCommandOptionString,
