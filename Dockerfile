@@ -1,7 +1,5 @@
 FROM nixos/nix:latest AS builder
 
-ARG GITHASH=unknown
-ENV GITHASH=${GITHASH}
 
 COPY . /tmp/build
 WORKDIR /tmp/build
@@ -22,6 +20,9 @@ RUN cp /etc/ssl/certs/ca-certificates.crt /tmp/certs/etc/ssl/certs/ca-certificat
 RUN mkdir -p /tmp/empty_tmp
 
 FROM scratch
+
+ARG GITHASH=unknown
+ENV GITHASH=${GITHASH}
 
 WORKDIR /app
 
